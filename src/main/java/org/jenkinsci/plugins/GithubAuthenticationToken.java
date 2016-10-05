@@ -26,7 +26,19 @@ THE SOFTWARE.
  */
 package org.jenkinsci.plugins;
 
-import hudson.security.SecurityRealm;
+import com.google.common.cache.Cache;
+import com.google.common.cache.CacheBuilder;
+
+import org.acegisecurity.GrantedAuthority;
+import org.acegisecurity.GrantedAuthorityImpl;
+import org.acegisecurity.providers.AbstractAuthenticationToken;
+import org.kohsuke.github.GHMyself;
+import org.kohsuke.github.GHOrganization;
+import org.kohsuke.github.GHPersonSet;
+import org.kohsuke.github.GHRepository;
+import org.kohsuke.github.GHTeam;
+import org.kohsuke.github.GHUser;
+import org.kohsuke.github.GitHub;
 
 import java.io.IOException;
 import java.util.ArrayList;
@@ -42,21 +54,8 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import hudson.security.SecurityRealm;
 import jenkins.model.Jenkins;
-
-import org.acegisecurity.GrantedAuthority;
-import org.acegisecurity.GrantedAuthorityImpl;
-import org.acegisecurity.providers.AbstractAuthenticationToken;
-import org.kohsuke.github.GHMyself;
-import org.kohsuke.github.GHOrganization;
-import org.kohsuke.github.GHPersonSet;
-import org.kohsuke.github.GHRepository;
-import org.kohsuke.github.GHTeam;
-import org.kohsuke.github.GHUser;
-import org.kohsuke.github.GitHub;
-
-import com.google.common.cache.Cache;
-import com.google.common.cache.CacheBuilder;
 
 /**
  * @author mocleiri

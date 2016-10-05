@@ -26,32 +26,20 @@ THE SOFTWARE.
  */
 package org.jenkinsci.plugins;
 
-import hudson.Extension;
-import hudson.Util;
-import hudson.model.Item;
-import hudson.model.AbstractProject;
-import hudson.model.BuildAuthorizationToken;
-import hudson.model.Descriptor;
-import hudson.model.Job;
-import hudson.model.Node;
-import hudson.model.Project;
-import hudson.security.ACL;
-import hudson.security.AuthorizationStrategy;
-import hudson.security.Permission;
+import org.apache.commons.lang.StringUtils;
+import org.jenkinsci.plugins.workflow.job.WorkflowJob;
+import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
+import org.kohsuke.stapler.DataBoundConstructor;
 
 import java.util.ArrayList;
 import java.util.Collection;
-import java.util.LinkedList;
-import java.util.List;
 
-import jenkins.model.Jenkins;
-
-import org.acegisecurity.Authentication;
-import org.apache.commons.httpclient.URIException;
-import org.apache.commons.httpclient.util.URIUtil;
-import org.apache.commons.lang.StringUtils;
-import org.kohsuke.stapler.DataBoundConstructor;
-import org.kohsuke.stapler.Stapler;
+import hudson.Extension;
+import hudson.model.AbstractItem;
+import hudson.model.Descriptor;
+import hudson.model.Job;
+import hudson.security.ACL;
+import hudson.security.AuthorizationStrategy;
 
 /**
  * @author mocleiri
@@ -119,9 +107,19 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
         return rootACL;
     }
 
+    public ACL getACL(AbstractItem job) {
+        if(job instanceof WorkflowMultiBranchProject) {
+            WorkflowMultiBranchProject project = (WorkflowMultiBranchProject)job;
+            GithubRequireOrganizationMembershipACL githubACL = (GithubRequireOrganizationMembershipACL) getRootACL();
+            return githubACL.cloneForProject(project);
+        } else {
+            return getRootACL();
+        }
+    }
+
     public ACL getACL(Job<?,?> job) {
-        if(job instanceof AbstractProject) {
-            AbstractProject project = (AbstractProject)job;
+        if(job instanceof WorkflowJob) {
+            WorkflowMultiBranchProject project = (WorkflowMultiBranchProject)job.getParent();
             GithubRequireOrganizationMembershipACL githubACL = (GithubRequireOrganizationMembershipACL) getRootACL();
             return githubACL.cloneForProject(project);
         } else {
