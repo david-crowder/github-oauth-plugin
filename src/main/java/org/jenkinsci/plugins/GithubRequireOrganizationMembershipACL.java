@@ -26,16 +26,30 @@ THE SOFTWARE.
  */
 package org.jenkinsci.plugins;
 
+
 import org.acegisecurity.Authentication;
 import org.jenkinsci.plugins.github_branch_source.GitHubSCMSource;
 import org.jenkinsci.plugins.workflow.multibranch.WorkflowMultiBranchProject;
+
+import hudson.model.AbstractProject;
+import hudson.model.Item;
+import hudson.plugins.git.GitSCM;
+import hudson.plugins.git.UserRemoteConfig;
+import hudson.scm.SCM;
+import hudson.security.ACL;
+import hudson.security.Permission;
+import jenkins.model.Jenkins;
+import org.acegisecurity.Authentication;
+
 import org.kohsuke.stapler.Stapler;
 import org.kohsuke.stapler.StaplerRequest;
 
+import javax.annotation.Nonnull;
 import java.net.URI;
 import java.util.LinkedList;
 import java.util.List;
 import java.util.logging.Logger;
+
 
 import hudson.model.Item;
 import hudson.security.ACL;
@@ -71,8 +85,8 @@ public class GithubRequireOrganizationMembershipACL extends ACL {
      * hudson.security.Permission)
      */
     @Override
-    public boolean hasPermission(Authentication a, Permission permission) {
-        if (a != null && a instanceof GithubAuthenticationToken) {
+    public boolean hasPermission(@Nonnull Authentication a, @Nonnull Permission permission) {
+        if (a instanceof GithubAuthenticationToken) {
             if (!a.isAuthenticated())
                 return false;
 
@@ -142,6 +156,9 @@ public class GithubRequireOrganizationMembershipACL extends ACL {
             return false;
         } else {
             String authenticatedUserName = a.getName();
+            if (authenticatedUserName == null) {
+                throw new IllegalArgumentException("Authentication must have a valid name");
+            }
 
             if (authenticatedUserName.equals(SYSTEM.getPrincipal())) {
                 // give system user full access
@@ -187,9 +204,17 @@ public class GithubRequireOrganizationMembershipACL extends ACL {
     }
 
     private boolean currentUriPathEquals( String specificPath ) {
+        Jenkins jenkins = Jenkins.getInstance();
+        if (jenkins == null) {
+            throw new IllegalStateException("Jenkins not started");
+        }
+        String rootUrl = jenkins.getRootUrl();
+        if (rootUrl == null) {
+            throw new IllegalStateException("Could not determine Jenkins URL");
+        }
         String requestUri = requestURI();
         if (requestUri != null) {
-            String basePath = URI.create(Jenkins.getInstance().getRootUrl()).getPath();
+            String basePath = URI.create(rootUrl).getPath();
             return URI.create(requestUri).getPath().equals(basePath + specificPath);
         } else {
             return false;

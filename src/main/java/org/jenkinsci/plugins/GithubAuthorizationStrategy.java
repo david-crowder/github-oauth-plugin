@@ -36,10 +36,18 @@ import java.util.Collection;
 
 import hudson.Extension;
 import hudson.model.AbstractItem;
+import com.google.common.collect.ImmutableList;
+import hudson.Extension;
+import hudson.model.AbstractProject;
 import hudson.model.Descriptor;
 import hudson.model.Job;
 import hudson.security.ACL;
 import hudson.security.AuthorizationStrategy;
+import org.apache.commons.lang.StringUtils;
+import org.kohsuke.stapler.DataBoundConstructor;
+
+import javax.annotation.Nonnull;
+import java.util.Collection;
 
 /**
  * @author mocleiri
@@ -48,30 +56,7 @@ import hudson.security.AuthorizationStrategy;
  *
  */
 public class GithubAuthorizationStrategy extends AuthorizationStrategy {
-    @Deprecated
-    public GithubAuthorizationStrategy(String adminUserNames,
-            boolean authenticatedUserReadPermission,
-            boolean useRepositoryPermissions,
-            String organizationNames,
-            boolean allowGithubWebHookPermission,
-            boolean allowCcTrayPermission,
-            boolean allowAnonymousReadPermission,
-            boolean allowAnonymousJobStatusPermission) {
-        this(adminUserNames,
-                authenticatedUserReadPermission,
-                useRepositoryPermissions,
-                false,
-                organizationNames,
-                allowGithubWebHookPermission,
-                allowCcTrayPermission,
-                allowAnonymousReadPermission,
-                allowAnonymousJobStatusPermission);
-    }
 
-    /**
-     * @param allowAnonymousReadPermission
-     * @since 0.19
-     */
     @DataBoundConstructor
     public GithubAuthorizationStrategy(String adminUserNames,
             boolean authenticatedUserReadPermission,
@@ -99,9 +84,10 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
 
     /*
      * (non-Javadoc)
-     *
+     * @return rootAcl
      * @see hudson.security.AuthorizationStrategy#getRootACL()
      */
+    @Nonnull
     @Override
     public ACL getRootACL() {
         return rootACL;
@@ -117,24 +103,31 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
         }
     }
 
-    public ACL getACL(Job<?,?> job) {
+    @Nonnull
+    public ACL getACL(@Nonnull Job<?,?> job) {
         if(job instanceof WorkflowJob) {
-            WorkflowMultiBranchProject project = (WorkflowMultiBranchProject)job.getParent();
+            WorkflowMultiBranchProject project = (WorkflowMultiBranchProject) job.getParent();
             GithubRequireOrganizationMembershipACL githubACL = (GithubRequireOrganizationMembershipACL) getRootACL();
             return githubACL.cloneForProject(project);
+        //}
+        //else if(job instanceof AbstractProject) {
+        //    AbstractProject project = (AbstractProject)job;
+        //    GithubRequireOrganizationMembershipACL githubACL = (GithubRequireOrganizationMembershipACL) getRootACL();
+        //    return githubACL.cloneForProject(project);
         } else {
             return getRootACL();
         }
     }
 
-    /*
+    /**
      * (non-Javadoc)
-     *
+     * @return groups
      * @see hudson.security.AuthorizationStrategy#getGroups()
      */
+    @Nonnull
     @Override
     public Collection<String> getGroups() {
-        return new ArrayList<String>(0);
+        return ImmutableList.of();
     }
 
     private Object readResolve() {
@@ -142,7 +135,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return organizationNames
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#getOrganizationNameList()
      */
     public String getOrganizationNames() {
@@ -150,7 +143,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return adminUserNames
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#getAdminUserNameList()
      */
     public String getAdminUserNames() {
@@ -158,7 +151,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return isUseRepositoryPermissions
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isUseRepositoryPermissions()
      */
     public boolean isUseRepositoryPermissions() {
@@ -166,7 +159,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return isAuthenticatedUserCreateJobPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAuthenticatedUserCreateJobPermission()
      */
     public boolean isAuthenticatedUserCreateJobPermission() {
@@ -174,7 +167,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return isAuthenticatedUserReadPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAuthenticatedUserReadPermission()
      */
     public boolean isAuthenticatedUserReadPermission() {
@@ -182,7 +175,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return isAllowGithubWebHookPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAllowGithubWebHookPermission()
      */
     public boolean isAllowGithubWebHookPermission() {
@@ -190,7 +183,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
-     * @return
+     * @return isAllowCcTrayPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAllowCcTrayPermission()
      */
     public boolean isAllowCcTrayPermission() {
@@ -199,7 +192,7 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
 
 
     /**
-     * @return
+     * @return isAllowAnonymousReadPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAllowAnonymousReadPermission()
      */
     public boolean isAllowAnonymousReadPermission() {
@@ -207,8 +200,8 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
     }
 
     /**
+     * @return isAllowAnonymousJobStatusPermission
      * @see org.jenkinsci.plugins.GithubRequireOrganizationMembershipACL#isAllowAnonymousJobStatusPermission()
-     * @return
      */
     public boolean isAllowAnonymousJobStatusPermission() {
         return rootACL.isAllowAnonymousJobStatusPermission();
@@ -235,6 +228,11 @@ public class GithubAuthorizationStrategy extends AuthorizationStrategy {
         } else {
             return false;
         }
+    }
+
+    @Override
+    public int hashCode() {
+        return rootACL != null ? rootACL.hashCode() : 0;
     }
 
     @Extension

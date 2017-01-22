@@ -1,7 +1,7 @@
 /**
  The MIT License
 
-Copyright (c) 2011 Michael O'Cleirigh
+Copyright (c) 2011-2016 Michael O'Cleirigh, James Nord, CloudBees, Inc.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -33,27 +33,17 @@ import com.thoughtworks.xstream.converters.UnmarshallingContext;
 import com.thoughtworks.xstream.io.HierarchicalStreamReader;
 import com.thoughtworks.xstream.io.HierarchicalStreamWriter;
 import hudson.Extension;
-import hudson.model.Descriptor;
-import hudson.model.listeners.ItemListener;
-import hudson.model.User;
 import hudson.ProxyConfiguration;
+import hudson.Util;
+import hudson.model.Descriptor;
+import hudson.model.User;
 import hudson.security.GroupDetails;
 import hudson.security.SecurityRealm;
 import hudson.security.UserMayOrMayNotExistException;
 import hudson.tasks.Mailer;
-import hudson.Util;
 import hudson.util.Secret;
-import java.io.IOException;
-import java.lang.reflect.InvocationTargetException;
-import java.lang.reflect.Method;
-import java.net.InetSocketAddress;
-import java.net.Proxy;
-import java.util.Arrays;
-import java.util.HashSet;
-import java.util.logging.Level;
-import java.util.logging.Logger;
-import java.util.Set;
 import jenkins.model.Jenkins;
+import jenkins.security.SecurityListener;
 import org.acegisecurity.Authentication;
 import org.acegisecurity.AuthenticationException;
 import org.acegisecurity.AuthenticationManager;
@@ -64,11 +54,12 @@ import org.acegisecurity.userdetails.UserDetails;
 import org.acegisecurity.userdetails.UserDetailsService;
 import org.acegisecurity.userdetails.UsernameNotFoundException;
 import org.apache.commons.httpclient.URIException;
-import org.apache.http.client.methods.HttpPost;
-import org.apache.http.client.methods.HttpUriRequest;
-import org.apache.http.conn.params.ConnRoutePNames;
+import org.apache.commons.lang.builder.HashCodeBuilder;
 import org.apache.http.HttpEntity;
 import org.apache.http.HttpHost;
+import org.apache.http.client.config.RequestConfig;
+import org.apache.http.client.methods.HttpPost;
+import org.apache.http.client.methods.HttpUriRequest;
 import org.apache.http.impl.client.CloseableHttpClient;
 import org.apache.http.impl.client.HttpClients;
 import org.apache.http.util.EntityUtils;
@@ -77,7 +68,6 @@ import org.kohsuke.github.GHEmail;
 import org.kohsuke.github.GHMyself;
 import org.kohsuke.github.GHOrganization;
 import org.kohsuke.github.GHTeam;
-import org.kohsuke.github.GHUser;
 import org.kohsuke.stapler.DataBoundConstructor;
 import org.kohsuke.stapler.Header;
 import org.kohsuke.stapler.HttpRedirect;
@@ -86,6 +76,16 @@ import org.kohsuke.stapler.HttpResponses;
 import org.kohsuke.stapler.StaplerRequest;
 import org.springframework.dao.DataAccessException;
 import org.springframework.dao.DataRetrievalFailureException;
+
+import javax.annotation.Nonnull;
+import javax.annotation.Nullable;
+import java.io.IOException;
+import java.net.InetSocketAddress;
+import java.net.Proxy;
+import java.util.Arrays;
+import java.util.HashSet;
+import java.util.Set;
+import java.util.logging.Logger;
 
 /**
  *
@@ -100,9 +100,6 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
     private static final String DEFAULT_API_URI = "https://api.github.com";
     private static final String DEFAULT_ENTERPRISE_API_SUFFIX = "/api/v3";
     private static final String DEFAULT_OAUTH_SCOPES = "read:org,user:email";
-
-    @Deprecated
-    private static final String DEFAULT_URI = DEFAULT_WEB_URI;
 
     private String githubWebUri;
     private String githubApiUri;
@@ -135,50 +132,6 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
         this.oauthScopes  = Util.fixEmptyAndTrim(oauthScopes);
     }
 
-    /**
-     * @deprecated Use {@link GithubSecurityRealm#GithubSecurityRealm(String, String, String, String, String)}
-     *             instead.
-     *
-     * @param githubWebUri The URI to the root of the web UI for GitHub or GitHub Enterprise,
-     *                     including the protocol (e.g. https).
-     * @param githubApiUri The URI to the root of the API for GitHub or GitHub Enterprise,
-     *                     including the protocol (e.g. https).
-     * @param clientID The client ID for the created OAuth Application.
-     * @param clientSecret The client secret for the created GitHub OAuth Application.
-     */
-    @Deprecated
-    public GithubSecurityRealm(String githubWebUri,
-            String githubApiUri,
-            String clientID,
-            String clientSecret) {
-        super();
-
-        this.githubWebUri = Util.fixEmptyAndTrim(githubWebUri);
-        this.githubApiUri = Util.fixEmptyAndTrim(githubApiUri);
-        this.clientID     = Util.fixEmptyAndTrim(clientID);
-        setClientSecret(Util.fixEmptyAndTrim(clientSecret));
-        this.oauthScopes  = DEFAULT_OAUTH_SCOPES;
-    }
-
-    /**
-     * @deprecated Use {@link GithubSecurityRealm#GithubSecurityRealm(String, String, String, String)}
-     *             instead.
-     *
-     * @param githubWebUri The URI to the root of the web UI for GitHub or GitHub Enterprise.
-     * @param clientID The client ID for the created OAuth Application.
-     * @param clientSecret The client secret for the created GitHub OAuth Application.
-     */
-    @Deprecated
-    public GithubSecurityRealm(String githubWebUri, String clientID, String clientSecret) {
-        super();
-
-        this.githubWebUri = Util.fixEmptyAndTrim(githubWebUri);
-        this.githubApiUri = determineApiUri(this.githubWebUri);
-        this.clientID     = Util.fixEmptyAndTrim(clientID);
-        setClientSecret(Util.fixEmptyAndTrim(clientSecret));
-        this.oauthScopes  = DEFAULT_OAUTH_SCOPES;
-    }
-
     private GithubSecurityRealm() {    }
 
     /**
@@ -203,17 +156,6 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
      */
     private void setGithubWebUri(String githubWebUri) {
         this.githubWebUri = githubWebUri;
-    }
-
-    /**
-     * @param githubWebUri
-     *            the string representation of the URI to the root of the Web UI for
-     *            GitHub or GitHub Enterprise.
-     * @deprecated Use {@link GithubSecurityRealm#setGithubWebUri(String)} instead.
-     */
-    @Deprecated
-    private void setGithubUri(String githubWebUri) {
-        setGithubWebUri(githubWebUri);
     }
 
     /**
@@ -388,8 +330,8 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
             throws IOException {
         request.getSession().setAttribute(REFERER_ATTRIBUTE,referer);
 
-        Set<String> scopes = new HashSet<String>();
-        for (GitHubOAuthScope s : Jenkins.getInstance().getExtensionList(GitHubOAuthScope.class)) {
+        Set<String> scopes = new HashSet<>();
+        for (GitHubOAuthScope s : getJenkins().getExtensionList(GitHubOAuthScope.class)) {
             scopes.addAll(s.getScopesToRequest());
         }
         String suffix="";
@@ -406,7 +348,7 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
     }
 
     /**
-     * This is where the user comes back to at the end of the OpenID redirect
+     * This is where the user comes back to at the end of the OAuth redirect
      * ping-pong.
      */
     public HttpResponse doFinishLogin(StaplerRequest request)
@@ -418,30 +360,7 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
             return HttpResponses.redirectToContextRoot();
         }
 
-        Log.info("test");
-
-        HttpPost httpost = new HttpPost(githubWebUri
-                + "/login/oauth/access_token?" + "client_id=" + clientID + "&"
-                + "client_secret=" + clientSecret + "&" + "code=" + code);
-
-        CloseableHttpClient httpclient = HttpClients.createDefault();
-        HttpHost proxy = getProxy(httpost);
-        if (proxy != null) {
-            httpclient.getParams().setParameter(ConnRoutePNames.DEFAULT_PROXY, proxy);
-        }
-
-        org.apache.http.HttpResponse response = httpclient.execute(httpost);
-
-        HttpEntity entity = response.getEntity();
-
-        String content = EntityUtils.toString(entity);
-
-        // When HttpClient instance is no longer needed,
-        // shut down the connection manager to ensure
-        // immediate deallocation of all system resources
-        httpclient.getConnectionManager().shutdown();
-
-        String accessToken = extractToken(content);
+        String accessToken = getAccessToken(code);
 
         if (accessToken != null && accessToken.trim().length() > 0) {
             // only set the access token if it exists.
@@ -450,6 +369,9 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
 
             GHMyself self = auth.getMyself();
             User u = User.current();
+            if (u == null) {
+                throw new IllegalStateException("Can't find user");
+            }
             u.setFullName(self.getName());
             // Set email from github only if empty
             if (!u.getProperty(Mailer.UserProperty.class).hasExplicitlyConfiguredAddress()) {
@@ -468,7 +390,7 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
                 }
             }
 
-            fireAuthenticated(new GithubOAuthUserDetails(self, auth.getAuthorities()));
+            SecurityListener.fireAuthenticated(new GithubOAuthUserDetails(self.getLogin(), auth.getAuthorities()));
         } else {
             Log.info("Github did not return an access token.");
         }
@@ -478,32 +400,38 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
         return HttpResponses.redirectToContextRoot();   // referer should be always there, but be defensive
     }
 
-    /**
-     * Calls {@code SecurityListener.fireAuthenticated()} but through reflection to avoid
-     * hard dependency on non-LTS core version.
-     * TODO delete in 1.569+
-     */
-    private void fireAuthenticated(UserDetails details) {
-        try {
-            Class<?> c = Class.forName("jenkins.security.SecurityListener");
-            Method m = c.getMethod("fireAuthenticated", UserDetails.class);
-            m.invoke(null,details);
-        } catch (ClassNotFoundException e) {
-            // running with old core
-        } catch (NoSuchMethodException e) {
-            // running with old core
-        } catch (IllegalAccessException e) {
-            throw (Error)new IllegalAccessError(e.getMessage()).initCause(e);
-        } catch (InvocationTargetException e) {
-            LOGGER.log(Level.WARNING, "Failed to invoke fireAuthenticated", e);
+    @Nullable
+    private String getAccessToken(@Nonnull String code) throws IOException {
+        String content;
+        try (CloseableHttpClient httpClient = HttpClients.createDefault()) {
+            HttpPost httpost = new HttpPost(githubWebUri
+                    + "/login/oauth/access_token?" + "client_id=" + clientID + "&"
+                    + "client_secret=" + clientSecret + "&" + "code=" + code);
+            HttpHost proxy = getProxy(httpost);
+            if (proxy != null) {
+                RequestConfig requestConfig = RequestConfig.custom().setProxy(proxy).build();
+                httpost.setConfig(requestConfig);
+            }
+            org.apache.http.HttpResponse response = httpClient.execute(httpost);
+            HttpEntity entity = response.getEntity();
+            content = EntityUtils.toString(entity);
+
         }
+        String parts[] = content.split("&");
+        for (String part : parts) {
+            if (content.contains("access_token")) {
+                String tokenParts[] = part.split("=");
+                return tokenParts[1];
+            }
+        }
+        return null;
     }
 
     /**
      * Returns the proxy to be used when connecting to the given URI.
      */
     private HttpHost getProxy(HttpUriRequest method) throws URIException {
-        ProxyConfiguration proxy = Jenkins.getInstance().proxy;
+        ProxyConfiguration proxy = getJenkins().proxy;
         if (proxy==null)    return null;    // defensive check
 
         Proxy p = proxy.createProxy(method.getURI().getHost());
@@ -517,24 +445,6 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
         default:
             return null;        // not supported yet
         }
-    }
-
-    private String extractToken(String content) {
-        String parts[] = content.split("&");
-
-        for (String part : parts) {
-
-            if (content.contains("access_token")) {
-
-                String tokenParts[] = part.split("=");
-
-                return tokenParts[1];
-            }
-
-            // fall through
-        }
-
-        return null;
     }
 
     /*
@@ -578,6 +488,18 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
     @Override
     public String getLoginUrl() {
         return "securityRealm/commenceLogin";
+    }
+
+    @Override
+    protected String getPostLogOutUrl(StaplerRequest req, Authentication auth) {
+        // if we just redirect to the root and anonymous does not have Overall read then we will start a login all over again.
+        // we are actually anonymous here as the security context has been cleared 
+        Jenkins j = Jenkins.getInstance();
+        assert j != null;
+        if (j.hasPermission(Jenkins.READ)) {
+            return super.getPostLogOutUrl(req, auth);
+        }
+        return req.getContextPath()+ "/" + GithubLogoutAction.POST_LOGOUT_URL;
     }
 
     @Extension
@@ -627,8 +549,8 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
 
     /**
      *
-     * @param username
-     * @return
+     * @param username username to lookup
+     * @return userDetails
      * @throws UserMayOrMayNotExistException
      * @throws UsernameNotFoundException
      * @throws DataAccessException
@@ -636,7 +558,10 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
     @Override
     public UserDetails loadUserByUsername(String username)
             throws UsernameNotFoundException, DataAccessException {
-        GHUser user = null;
+        //username is in org*team format
+        if(username.indexOf(GithubOAuthGroupDetails.ORG_TEAM_SEPARATOR) >= 0 ) {
+            throw new UsernameNotFoundException("Using org*team format instead of username: " + username);
+        }
 
         Authentication token = SecurityContextHolder.getContext().getAuthentication();
 
@@ -652,6 +577,15 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
             throw new UserMayOrMayNotExistException("Unexpected authentication type: " + token);
         }
 
+        /**
+         * Always lookup the local user first. If we can't resolve it then we can burn an API request to Github for this user
+         * Taken from hudson.security.HudsonPrivateSecurityRealm#loadUserByUsername(java.lang.String)
+         */
+        User localUser = User.getById(username, false);
+        if (localUser != null) {
+            return new GithubOAuthUserDetails(username, authToken);
+        }
+
         try {
             GithubOAuthUserDetails userDetails = authToken.getUserDetails(username);
             if (userDetails == null)
@@ -664,7 +598,7 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
             }
 
             return userDetails;
-        } catch (Error e) {
+        } catch (IOException | Error e) {
             throw new DataRetrievalFailureException("loadUserByUsername (username=" + username +")", e);
         }
     }
@@ -688,10 +622,21 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
         }
     }
 
+    @Override
+    public int hashCode() {
+        return new HashCodeBuilder()
+                .append(this.getGithubWebUri())
+                .append(this.getGithubApiUri())
+                .append(this.getClientID())
+                .append(this.getClientSecret())
+                .append(this.getOauthScopes())
+                .toHashCode();
+    }
+
     /**
      *
-     * @param groupName
-     * @return
+     * @param groupName groupName to look up
+     * @return groupDetails
      * @throws UsernameNotFoundException
      * @throws DataAccessException
      */
@@ -727,29 +672,12 @@ public class GithubSecurityRealm extends SecurityRealm implements UserDetailsSer
         }
     }
 
-    /*
-       Migrate settings from 0.20 to 0.21+
-     */
-    @Extension
-    public static final class Migrator extends ItemListener {
-        @SuppressWarnings("deprecation")
-        @Override
-        public void onLoaded() {
-            try {
-                Jenkins instance = Jenkins.getInstance();
-                if(instance.getSecurityRealm() instanceof GithubSecurityRealm) {
-                    GithubSecurityRealm myRealm = (GithubSecurityRealm) instance.getSecurityRealm();
-                    if(myRealm.getOauthScopes() == null) {
-                        GithubSecurityRealm newRealm = new GithubSecurityRealm(myRealm.getGithubWebUri(), myRealm.getGithubApiUri(), myRealm.getClientID(), myRealm.getClientSecret().getPlainText());
-                        instance.setSecurityRealm(newRealm);
-                        instance.save();
-                    }
-                }
-            }
-            catch(IOException e) {
-                LOGGER.log(Level.WARNING, "could not migrate GithubSecurityRealm", e);
-            }
+    static Jenkins getJenkins() {
+        Jenkins jenkins = Jenkins.getInstance();
+        if (jenkins == null) {
+            throw new IllegalStateException("Jenkins not started");
         }
+        return jenkins;
     }
 
     /**

@@ -20,7 +20,7 @@ public class GithubOAuthGroupDetails extends GroupDetails {
 
     /**
     * Group based on organization name
-    * @param org
+    * @param org the github organization
     */
     public GithubOAuthGroupDetails(GHOrganization org) {
         super();
@@ -30,7 +30,7 @@ public class GithubOAuthGroupDetails extends GroupDetails {
 
     /**
     * Group based on team name
-     * @param ghTeam
+     * @param team the github team
      */
     public GithubOAuthGroupDetails(GHTeam team) {
         super();
